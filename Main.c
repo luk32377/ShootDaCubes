@@ -92,6 +92,51 @@ bool IsColliding(SDL_Rect one, SDL_Rect two) {
 
 typedef struct {
     SDL_Rect bounds;
+    int alpha;
+    int r, g, b;
+    float dir;
+    float speed;
+} Part;
+
+Part* PartCreate(float x, float y) {
+    Part* pp = malloc(sizeof(Part));
+    pp->bounds = (SDL_Rect){x, y, 20, 20};
+    pp->alpha = 255;
+    pp->dir = rand() % 360;
+    pp->speed = 2 + rand() % 15;
+    pp->r = 0;
+    pp->g = 0;
+    pp->b = 0;
+    int rnum = rand() % 100;
+    if (rnum < 33) {
+        pp->r = 255;
+    } else if (rnum < 66) {
+        pp->g = 255;
+    } else {
+        pp->b = 255;
+    }
+    return pp;
+}
+
+void PartDestroy(Part* pp) {
+    free(pp);
+}
+
+void PartUpdate(Part* pp) {
+    float xx = cos(pp->dir) * pp->speed;
+    float yy = sin(pp->dir) * pp->speed;
+    pp->alpha -= 2;
+    pp->bounds.x += xx;
+    pp->bounds.y += yy;
+}
+
+void PartRender(SDL_Renderer* rend, Part* pp) {
+    SDL_SetRenderDrawColor(rend, pp->r, pp->g, pp->b, pp->alpha);
+    SDL_RenderFillRect(rend, &pp->bounds);
+}
+
+typedef struct {
+    SDL_Rect bounds;
     int r, g, b;
     int dir;
     float speed;
@@ -208,7 +253,7 @@ typedef struct {
 
 En* EnemyCreate(void) {
     En* en = malloc(sizeof(En));
-    en->speed = 5.0f;
+    en->speed = 5.0f + rand() % 12;
     en->dspeed = 2.0f;
     en->bounds = (SDL_Rect){-50, 50, 50, 50};
     en->r = 0;
@@ -272,6 +317,7 @@ bool left = false, right = false, space = false;
 Player* player = NULL;
 Vector* en = NULL;
 Vector* bullets = NULL;
+Vector* parts = NULL;
 
 const int ENCAP = 50;
 int spawnIter, spawnTime;
@@ -280,9 +326,10 @@ void Init() {
     player = PlayerCreate();
     bullets = VectorCreate();
     en = VectorCreate();
+    parts = VectorCreate();
     VectorPush(en, EnemyCreate());
     spawnIter = 0;
-    spawnTime = rand() % 300 + 30;
+    spawnTime = rand() % 120 + 30;
 }
 
 void Reset() {
@@ -294,6 +341,10 @@ void Reset() {
         EnemyDestroy((En*)VectorGet(en, i));
     }
     VectorClear(en);
+    for (int i = 0; i < VectorGetSize(parts); i++) {
+        PartDestroy((Part*)VectorGet(parts, i));
+    }
+    VectorClear(parts);
     player->bounds = (SDL_Rect){475, 550, 50, 50};
     player->xvel = 0.0f;
 }
@@ -322,6 +373,9 @@ void Update() {
                 continue;
             }
             if (IsColliding(ee->bounds, bb->bounds)) {
+                for (int i = 0; i < 50; i++) {
+                    VectorPush(parts, PartCreate(bb->bounds.x + 10, bb->bounds.y + 50));
+                }
                 BulletDestroy(bb);
                 VectorErase(bullets, j);
                 EnemyDestroy(ee);
@@ -349,7 +403,16 @@ void Update() {
             VectorPush(en, EnemyCreate());
         }
         spawnIter = 0;
-        spawnTime = rand() % 300 + 30;
+        spawnTime = rand() % 120 + 30;
+    }
+    for (int i = 0; i < VectorGetSize(parts); i++) {
+        Part* pp = (Part*)VectorGet(parts, i);
+        PartUpdate(pp);
+        if (pp->alpha < 5) {
+            PartDestroy(pp);
+            VectorErase(parts, i);
+            continue;
+        }
     }
 }
 
@@ -360,6 +423,9 @@ void Render(SDL_Renderer* rend) {
     }
     for (int i = 0; i < VectorGetSize(bullets); i++) {
         BulletRender(rend, (Bullet*)VectorGet(bullets, i));
+    }
+    for (int i = 0; i < VectorGetSize(parts); i++) {
+        PartRender(rend, (Part*)VectorGet(parts, i));
     }
 }
 
@@ -374,6 +440,11 @@ void Cleanup() {
     }
     VectorClear(en);
     VectorDestroy(en);
+    for (int i = 0; i < VectorGetSize(parts); i++) {
+        PartDestroy((Part*)VectorGet(parts, i));
+    }
+    VectorClear(parts);
+    VectorDestroy(parts);
     PlayerDestroy(player);
 }
 
@@ -386,6 +457,7 @@ int main(void) {
     SDL_Window* window = SDL_CreateWindow("HelloFriend", 100, 100, 1000, 600, SDL_WINDOW_SHOWN);
     SDL_Renderer* rend = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     SDL_Texture* rendTex = SDL_CreateTexture(rend, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 1000, 600);
+    SDL_SetTextureBlendMode(rendTex, SDL_BLENDMODE_BLEND);
 
     const unsigned long TFPS = 1000 / 30;
     unsigned long tbegin = SDL_GetTicks();
